@@ -1,6 +1,5 @@
 use crate::error::DecodeHexError;
 
-
 pub fn toggle_endian<T>(lst: Vec<T>) -> Vec<u8>
 where
     T: AsRef<[u8]>,

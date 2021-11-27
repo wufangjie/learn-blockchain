@@ -1,6 +1,8 @@
 mod bitcoin;
-mod test_hash;
 mod test_ecc;
+mod test_hash;
 
 
-fn main() {}
+fn main() {
+    test_ecc::test_elgamal();
+}

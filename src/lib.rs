@@ -3,7 +3,6 @@ pub mod base64;
 pub mod conv;
 pub mod error;
 
-
 // use bitcoin_hashes::Hash;
 // use bitcoin_hashes::hex::FromHex;
 

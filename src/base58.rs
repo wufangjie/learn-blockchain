@@ -64,9 +64,7 @@ pub fn encode_base58_check(prefix: &Vec<u8>, hex_str: &Vec<u8>) -> Vec<u8> {
     encode_base58(&to_hash)
 }
 
-pub fn decode_base58_check() {
-
-}
+pub fn decode_base58_check() {}
 
 #[cfg(test)]
 mod tests {
