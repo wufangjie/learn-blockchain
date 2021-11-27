@@ -1,0 +1,223 @@
+#+TITLE: blockchain
+#+AUTHOR: wfj
+#+EMAIL: wufangjie1223@126.com
+#+OPTIONS: ^:{} \n:t email:t
+#+HTML_HEAD_EXTRA: <style type="text/css"> body {padding-left: 26%; background: #e3edcd;} #table-of-contents {position: fixed; width: 25%; height: 100%; top: 0; left: 0; overflow-y: scroll; resize: horizontal;} i {color: #666666;} pre, pre.src:before {color: #ffffff; background: #131926;} </style>
+#+HTML_HEAD_EXTRA: <script type="text/javascript"> function adjust_html(){document.getElementsByTagName("body")[0].style.cssText="padding-left: "+(parseInt(document.getElementById("table-of-contents").style.width)+5)+"px; background: #e3edcd;"}; window.onload=function(){document.getElementById("table-of-contents").addEventListener("mouseup",adjust_html,true)}</script>
+
+* 白皮书
+** Abstract
+timestamps transactions by hashing them into an ongoing chain of hash-based proof-of-work
+
+** Introduction
+routine escrow mechanisms could easily be implemented?
+
+we propose a solution to the double-spending problem using a peer-to-peer distributed timestamp server to generate computational proof of the chronological order of transactions (按时间顺序的可计算证据)
+
+** Transactions (交易)
+Each owner transfers the coin to the next by digitally signing a hash of the previous transaction and the public key of the next owner and adding these to the end of the coin. A payee can verify the signatures to verify the chain of ownership. (how?)
+
+earliest transaction (指的应该是交易链从后往前看, 拥有者是卖家时的第一笔交易)
+这里的上一个交易指的是这枚硬币的上一次交易?
+
+** Timestamp Server
+chain:
+timestamp + hash(items + previous hash)
+timestamp + hash(items + previous hash)
+...
+会广播 hash, 方便别的节点判断交易是否有效
+
+** Proof-of-Work
+scanning for a value (Nonce) that when hashed, such as with SHA-256, the hash begins with a number of zero bits
+
+** Network
+同一时间, 只计算一个区块,
+交易会广播, 区块会收集交易(可多个), 然后寻找 Nonce, 找到之后广播, 让别的节点
+
+
+有很多疑问:
++ 收集交易是强制的还是可自己选择的, 会不会所有的节点都漏掉了某个交易
++ 区块是否对交易的数量有限制, 最大最小
++ 收集交易之后, 又接受了别的节点找到 Nonce 后广播的 block, 而那个 block 没有包含此节点收集的交易, 该如何处理
++ 既然找 Nonce 有一定的随机性, 那么攻击者也有可能先找到 Nonce, 从而作假
+
+** 激励
+区块中的第一笔交易, 是区块创建者开启一枚属于他的新货币的特殊交易
+
+所以一个区块就是一枚新货币
+
+** 回收磁盘空间
+区块头大约 80 bytes (上一个hash, 根hash, 随机数)
+每10分钟生成一个区块
+
+** 简化的支付验证
+用户只需要, 最长工作量证明的区块头副本
+如何确认自己在链中? 如何向其他网络节点(随机, 还是向多个节点?)查询
+
+** 交易的合并和分割
+
+* 密钥
+
+TODO: 不同的密钥, 可以有相同的公钥?
+如果是, 那如何保证打到比特币地址的钱为某个用户所有
+如果否, 那么是否可以随机生成密钥, 来查看当前网络有无对应的公钥来盗用
+2 ** 256 大约是 10 ** 77
+
+** 数字签名
+sig(nature), (类比手写签名, 又称为见证 witness)
+
+依赖于 UTXO 的前一个交易 (防止 owner 的 double spend), 以及当前交易的 hash (防止非 owner 的 double spend)
+
+** 随机
+需要密码学安全, 而非种子
+
+** 椭圆曲线密码学 (ECC) (secp256k1)
+公式 (x ** 3 + 7 - y ** 2) mod(p) 为 0
+
+私钥 随机生成的 k
+
+公钥 K = k * G (其中 G 为固定点, 加法定义为: 求当前点切线与椭圆曲线的交点(唯一, 且为整数坐标), 并沿 x 轴翻折后得到)
+
+地址 A = RIPEMD160(sha256(K))
+
+Base58Check 上述算法的到的 A 是 160 bits 的数如果用十六进制表示仍然有 40 位, 不是我们经常见到的以 1 开头的比特币地址, 所以用 Base58Check 编码(其中 base58 比 base64: [0-9A-Za-z+/] 少易混淆的 0 O I l 和 + /)
+base64 2 ** 6 = 64 = 8 * 8 即原来的 3 字节可以用 4 个字符来表示, 相较于未编码字符的优势是便于复制, 相较于十六进制的优势是短很多
+Check 指的是校验和 Sha256(Sha256(prefix + data)) 的前四字节 (应该是加在 base58 之前)
+
+
+
+
+** rsa
+这个跟 bitcoin 无关, 只是作为常用的非对称加密算法, 记录一下
+
+** 比特币靓号
+可以看出, 要通过暴力算法找出特定比特币地址的密钥是不可能的, 但靓号真的不会泄露密钥吗?
+* 钱包
+HD (层次确定) 钱包的设计非常有用,
+HMAC-SHA512 -> 私钥, 链码 + 32 bits 索引 -> 派生子密钥
+
+* 难度目标 Bits (4 bytes)
+每 2016 个区块更新 (根据过去 2015 个区块的总时间, 是 bug, 但已达成共识)
+
+P210
+https://www.blockchain.com/btc/block/0000000000000002a7bbd25a417c0374cc55261021e8a9ca74442b01284f0569
+0x1903a30c (419668748)
+
+< 0x0ca303 * 2 ** (8 * (0x19 - 3))
+< 2 ** (20 + 176)
+('{:b}'.format(0x0ca303) = '11001010001100000011')
+所以前面有 256 - 20 - 176 = 60 bits 个 0
+
+* 交易的组成和数字签名
+交易的本质是加密脚本
+
+* 脚本
+P2PKH
+P2SH (减少 UTXO 开销)
+(多重签名)
+
+* Return
+交易无关数据, 用于存证
+
+* 时间锁
+用于智能合约
+
+* SPV, Bloom 过滤器
++ 默克尔路径的概念容易先入为主, 以为是根到节点的路径, 实际上应该是节点上溯时所有兄弟节点的 hash 值, 只有这样节点才能通过对该交易进行 hash, 之后根据兄弟节点的 hash 得到默克尔根, 从而验证该交易存在
++ bloom 过滤器 (数学之美的书里讲过, 原理也比较简单) 主要是为了保护隐私, 减少被攻击的可能
+
+SPV 只能验证一个交易的存在, 而不能知道另一个与之相关的交易是否不存在, 即有无 double-spend, 所以容易受攻击
+
+* 独立验证交易和区块
+验证交易(10.3, P195): hash 生成来源(详见代码), 验证签名, UTXO
+验证区块(10.9, P214): hash 生成来源(详见代码),
+
+* ECC
+https://zhuanlan.zhihu.com/p/42629724
+
+** 域
+整数模 p 的剩余类 {0, 1, ... p-1} 是一个域, 记为 F_{p}, 以下所有取值均在域内
+
+** 负元
+a - b = a + (-b) = 0
+例: a = 20, p = 23, 那么 a 的负元就是 3
+
+** 逆元
+a * a^{-1} \equiv 1 (mod p)
+例: a = 20, p = 23, 那么 a^{-1} = 15
+分数取模 $\frac{1}{a}$ = a^{-1}
+
+** 求模一般用素数
+求模为什么基本都是素数, 因为多数情况需要存在逆元, 逆元存在的充分条件是 a, p 互素, 那所幸就取 p 为素数好了
+
+** ECC 的加法和数乘
+E_{p}(a, b): y^{2} \equiv x^{3} + a * x + b (mod p)
+比特币用的是: a = 0, b = 7?
+
+例2 和例3 都手动算一算, 判断结果是否在 E_{23}(1, 1) 上
+
+加法只有 P1 != P2 时才能进行
+P3(x3, y3) = P1(x1, y1) + P2(x2, y2)
+(if P1 != P2) \lambda = \frac{y2 - y1}{x2 - x1} # 斜率?
+(else) \lambda = \frac{3 * x2 + a}{2y1}         # 分子函数求导?
+
+x3 = \lambda^{2} - x1 - x2
+y3 = \lambda(x1 - x3) - y1
+
+减法: 等于加上 P(x, -y), 推导 (先验: P3 != P1, 只有无穷远点是零元):
+P3(x3, y3) + P4(x1, -y1), \lambda2 = \frac{y3 + y1}{x3 - x1} = -\lambda (根据上面的 y3 = 式), x5 = \lambda2^{2} - x1 - x3 = x2 (根据上面 x3 = 式), y5 = \lambda2 * (x1 - x5) - (-y1) = -\lambda * (x1 - x2) + y1 = (y2 - y1) + y1 = y2
+也就是说 P3(x3, y3) + P4(x1, -y1) = P2(x2, y2), 证毕
+
+** 加密 (ElGamal)
+*** 一般形式
+有 y \equiv g^{x} (mod p), 其中 (y, g, p) 为公钥, x 为密钥
+对于要发送的消息 M (其二进制表示就是整数), 随机生成一个零时私钥 k, 我们可以通过发送 C1 = g^{k} 和 C2 = y^{k} * M, 那么拥有私钥的一方就可以通过 C2 / (C1^{x}) = y^{k} * M / g^{k*x} = M 来解密
+
+*** 椭圆曲线 (类比一般形式)
+私钥 k, 公钥 G = (xg, yg), P = k * G = (xp, yp)
+消息 M, 随机私钥 k2, 发送 C1 = k2 * G, C2 = k2 * P + M,
+那么 k * C1 - C2 = k * k2 * G - k2 * k * G + M = M
+
+** 数字签名 (ECDSA) (椭圆曲线数字签名算法)
+* 其他细节或疑惑
+** address (也就是比特币账户)
+#+BEGIN_EXAMPLE
+1Cdid9KFAaatwczBwBttQcwXYCpvK8h7FK
+#+END_EXAMPLE
+
+以下链接可以查看 Alice address 的未花费比特币
+https://blockchain.info/unspent?active=1Cdid9KFAaatwczBwBttQcwXYCpvK8h7FK
+
+** tx Hash (交易 Hash, txid)
+#+BEGIN_EXAMPLE
+7957a35fe64f80d234d76d83a2a8f1a0d8149a41d81de548f0a65a8a999f6f18
+#+END_EXAMPLE
+
+以下链接可以查看交易详情:
+https://www.blockchain.com/btc/tx/7957a35fe64f80d234d76d83a2a8f1a0d8149a41d81de548f0a65a8a999f6f18
+
+交易类型:
++ 简单支付: 找零
++ 多对单: 钱包整理零钱
++ 单对多: 发工资
+
+NOTE: 区别于区块链, 每一笔钱也有自身的交易链
+
+前一个交易的输出 Hash 作为后一个交易的输入 (注意后面的:0, 是为了能有多个输入)
+7957a35fe64f80d234d76d83a2a8f1a0d8149a41d81de548f0a65a8a999f6f18:0
+
+** block 区块
+在交易详情的 Included in Block (277298), 可以跳转到区块详情
+区块 hash, 用来区别各区块, 方便查询
+https://www.blockchain.com/btc/block/0000000000000002f7de2a020d4934431bf1dc4b75ef11eed2eede55249f0472
+
+上述交易在第 14 页最后一个:
+https://www.blockchain.com/btc/block/0000000000000002f7de2a020d4934431bf1dc4b75ef11eed2eede55249f0472?page=14
+
+** 工作量证明 和 未经验证的交易池
+区块中的交易是有一定顺序的 (交易费高的优先, 现在已有交易费为 0 的不能及时处理了)
+工作量证明还可用于矿池的收益分配
+
+** TODO:
+如何确保 address, txid, block hash 的唯一性
+bitcoin-cli getblockhash 1000 # 就能获取获取 1000 号 block 的 hash
