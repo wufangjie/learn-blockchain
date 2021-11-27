@@ -147,6 +147,9 @@ a * a^{-1} \equiv 1 (mod p)
 例: a = 20, p = 23, 那么 a^{-1} = 15
 分数取模 $\frac{1}{a}$ = a^{-1}
 
+TODO: 可以利用扩展欧几里得算法，可以在多项式时间内，计算出来一个乘法逆元
+可能我的算法就是这里慢了
+
 ** 求模一般用素数
 求模为什么基本都是素数, 因为多数情况需要存在逆元, 逆元存在的充分条件是 a, p 互素, 那所幸就取 p 为素数好了
 
@@ -221,3 +224,17 @@ https://www.blockchain.com/btc/block/0000000000000002f7de2a020d4934431bf1dc4b75e
 ** TODO:
 如何确保 address, txid, block hash 的唯一性
 bitcoin-cli getblockhash 1000 # 就能获取获取 1000 号 block 的 hash
+* RSA
+任取两个大素数 p, q
+n = p * q (公钥1)
+\phi(n) = (p - 1) * (q - 1) # 欧拉
+任选大整数 e (公钥2), 满足 gcd(e, \phi(n)) = 1,
+
+任选密钥 d, 满足 d * e \equiv 1 (mod \phi(n)) (即求逆元)
+将消息 m 加密 c = m^{e} (mod n)
+解密: m = c^{d} (mod n) (证明略)
+
+欧拉定理: 正整数 n 和 a 互素, 那么 a^{\phi(n)} \equiv 1 (mod n)
+\phi(n) 称为欧拉函数, 是小于 n 的正整数中和 n 互素的个数
+标准因式分解 n = p1^{x1}*...*pn^{xn}
+\phi(n) = n * (1 - 1/x1)*...*(1 - 1/xn)
