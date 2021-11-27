@@ -1,7 +1,7 @@
 use bitcoin_hashes::hex::ToHex;
 use bitcoin_hashes::{sha256, sha256d, Hash};
-use learn_block_chain::conv;
-use learn_block_chain::timer::Timer;
+use learn_blockchain::conv;
+use utils::Timer;
 
 #[test]
 fn test_hash_block() {

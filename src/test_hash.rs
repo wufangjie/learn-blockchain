@@ -1,6 +1,6 @@
 use bitcoin_hashes::hex::ToHex;
 use bitcoin_hashes::{sha256, sha256d, Hash};
-use learn_block_chain::conv;
+use learn_blockchain::conv;
 
 // NOTE: bitcoin_hashes's fmt, to_hex are all little-endian
 
