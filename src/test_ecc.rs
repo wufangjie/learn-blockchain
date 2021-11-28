@@ -88,7 +88,7 @@ impl ECC {
             }
             (3 * p1.x * p1.x + self.a, 2 * p1.y)
         };
-        self.modulo(self.modulo(num) * self.cal_inverse(self.modulo(den)))
+        self.modulo(self.modulo(num) * self.cal_inverse_gcd_tail(self.modulo(den)))
     }
 
     fn cal_inverse(&self, x: T) -> T {
@@ -102,6 +102,32 @@ impl ECC {
             }
         }
         panic!("No inverse!");
+    }
+
+    fn cal_inverse_gcd(&self, x: T) -> T {
+        fn rec(y: T, x: T, k: T) -> (T, T) {
+            if x == 1 {
+                (0, 1) //(1, -k)
+            } else {
+                let k = y / x;
+                let (a, b) = rec(x, y - k * x, k);
+                (b, a - k * b)
+            }
+        }
+        self.modulo(rec(x, self.p, 1).0)
+    }
+
+    fn cal_inverse_gcd_tail(&self, x: T) -> T {
+        fn rec(y: T, x: T, a: T, b: T) -> T {
+            // one pre = how many x, one cur = how many x (tail recursive)
+            if x == 1 {
+                b
+            } else {
+                let k = y / x;
+                rec(x, y - k * x, b, a - k * b)
+            }
+        }
+        self.modulo(rec(x, self.p, 1, 0))
     }
 
     fn cal_negative(&self, x: T) -> T {
@@ -189,9 +215,9 @@ fn test_elgamal_small() {
     assert_eq!(m, ec.sub_p1_p2(&c2, &ec.mul_k_p_logn(k, &c1)));
 }
 
-
-pub fn test_elgamal() {
-    // finished in 17.33s
+#[test]
+fn test_elgamal() {
+    // finished in 17.33s (brute force) vs 0.29s (get_inverse_gcd_tail)
     let ec = ECC::new(10000019, 0, 225);
     let k = 2323532;
     let g = Point::new(720114, 611085363);
@@ -218,4 +244,13 @@ fn find_a_good_ec() {
         }
     }
     //225, 720114, 611085363
+}
+
+#[test]
+fn test_inverse_fast() {
+    let ec = ECC::new(102, 1, 1);
+    assert_eq!(53, ec.cal_inverse_gcd(77));
+    assert_eq!(53, ec.cal_inverse_gcd_tail(77));
+
+    assert_eq!(ec.cal_inverse_gcd(7), ec.cal_inverse_gcd_tail(7));
 }
