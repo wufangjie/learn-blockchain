@@ -21,7 +21,15 @@ fn test_hash_block() {
         "0000000000000002a7bbd25a417c0374cc55261021e8a9ca74442b01284f0569",
         sha256d::Hash::hash(&header).to_hex()
     );
+
+    // as_inner() is the real sequence
+    assert_eq!(
+        sha256d::Hash::hash(&header).as_inner(),
+        sha256::Hash::hash(sha256::Hash::hash(&header).as_inner()).as_inner()
+    );
+    // Display, ToHex's sequence is confused
     dbg!(sha256d::Hash::hash(&header).as_inner());
+    dbg!(sha256d::Hash::hash(&header));
     dbg!(sha256::Hash::hash(sha256::Hash::hash(&header).as_inner()));
 }
 

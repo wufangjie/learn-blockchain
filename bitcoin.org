@@ -177,10 +177,42 @@ P3(x3, y3) + P4(x1, -y1), \lambda2 = \frac{y3 + y1}{x3 - x1} = -\lambda (根据�
 
 *** 椭圆曲线 (类比一般形式)
 私钥 k, 公钥 G = (xg, yg), P = k * G = (xp, yp)
-消息 M, 随机私钥 k2, 发送 C1 = k2 * G, C2 = k2 * P + M,
-那么 k * C1 - C2 = k * k2 * G - k2 * k * G + M = M
+消息 M, 随机私钥 r, 发送 C1 = r * G, C2 = r * P + M,
+那么 k * C1 - C2 = k * r * G - r * k * G + M = M
 
 ** 数字签名 (ECDSA) (椭圆曲线数字签名算法)
+类似 ElGamal, 设原私钥 k, 原公钥 P(xp, yp) = k * G,
+NOTE: n 称为 G 的阶, 满足 n * G = O, 其中 O 为单位元, 例 E_{23}(1, 1) 上 (3, 10) 的阶为 28
+1. 随机生成新私钥 r, R(xr, yr) = r * G (新公钥) 使得 xr != 0 (mod n)
+2. s = r^{-1} * (hash(m) + xr * k), 满足 s != 0 (mod n), (否则重新从头来过)
+
+验证: hash(m) * s^{-1} * G + xr * s^{-1} * P 就是 R(xr, yr)
+
+用相同的 r 是不安全的, 详见:
+https://en.wikipedia.org/wiki/Elliptic_Curve_Digital_Signature_Algorithm
+
+
+网上有另一种方法, 看起来更简单
+1. 同上
+2. s = r - hash(m) * k (mod p)
+
+验证: s * G + hash(m) * P 就是 R (判断只用 x 坐标)
+因为 s * G = r * G - hash(m) * k * G = R - hash(m) * P
+
+TODO: 我无法推导两者的等价关系, 也无法指出后一种是否存在不妥
+
+** 注意
++ 第一种方法要求 n 是素数, 所以 (23, 1, 1) 的例子并不合适, 并且其中的 r^{-1}, s^{-1} 都是 (mod n) 的逆元
++ 第二种方法没有这种要求
+
+有限域上的椭圆曲线图, 对称轴并不是 x 轴, 而是 p / 2 (y = 0 时, 理论上不是对称的)
+
+https://blog.csdn.net/zhuiyunzhugang/article/details/107589223
+#+BEGIN_SRC rust
+let ec = ECC::new(23, 1, 1);
+assert_eq!(Point::new(4, 0), ec.mul_k_p_logn(14, &Point::new(3, 10)));
+#+END_SRC
+
 * 其他细节或疑惑
 ** address (也就是比特币账户)
 #+BEGIN_EXAMPLE
