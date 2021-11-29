@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 utils = { path = "utils", version = "0.1.0"}
-secp256k1 = "0.20.3"
+#secp256k1 = "0.20.3"
 bitcoin_hashes = "0.10.0"
 
 [profile.release]
