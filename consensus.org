@@ -1,0 +1,234 @@
+#+AUTHOR: wfj
+#+EMAIL: wufangjie1223@126.com
+#+OPTIONS: ^:{} \n:t email:t
+#+HTML_HEAD_EXTRA: <style type="text/css"> body {padding-left: 26%; background: #e3edcd;} #table-of-contents {position: fixed; width: 25%; height: 100%; top: 0; left: 0; overflow-y: scroll; resize: horizontal;} i {color: #666666;} pre, pre.src:before {color: #ffffff; background: #131926;} </style>
+#+HTML_HEAD_EXTRA: <script type="text/javascript"> function adjust_html(){document.getElementsByTagName("body")[0].style.cssText="padding-left: "+(parseInt(document.getElementById("table-of-contents").style.width)+5)+"px; background: #e3edcd;"}; window.onload=function(){document.getElementById("table-of-contents").addEventListener("mouseup",adjust_html,true)}</script>
+
+* basic
++ 共识有: 数据共识, 数据顺序共识
++ 信道可靠假设: (否则无法达成共识, 即可以重复, 丢包, 延迟, 不能被破坏)
++ 一般流程: client 发起 request, 到前端服务器 (不同算法不同), 发到后段处理后 response
+
+* raft (入门)
+** roles
+leader, candidate, follower 每个时刻只能是三者之一, 不同时刻可相互转化
+
+** term (任期)
+有唯一 term_id, 总是以一个投票开始, 以下一个投票开始为结束
+大多数节点同意后, 确认当选, 并发送当选消息
+
+** 阶段 (心跳消息(选举, 日志))
+1. 通知 (log, 日志持久化)
+2. 确认 (commit, execute 持久化)
+
+** 重要细节
++ 每个节点对确定 term_id 只会投出一票, 并且只会投给 term_id **大于** 自己维护的 term_id, 并且 log 至少和自己 **一样新** 的 (safety 保留已形成的共识), 拒绝时若自己是 follower 则马上进入 candidate 状态参选
++ 同一个 request 只能被一个 leader 决议, 如果 client 被返回 timeout, 其结果可能成功 (新的 leader 有其 log, 因为只被一个 leader 决议, 所以其值一定正确) 也可能失败
++ timeout: 超过一定时间 (150-300ms, 每次随机) 没收到消息, 就会成为 candidate, 发起投票
++ 分票情况 (未达成共识), timeout 后, 会把自己维护的 term_id 加一再次参选 (所有节点 都可以)
++ 网络分区 (脑裂情况): 少数节点会因无法达成共识而不能 commit (如果原先有 leader 仍然会发消息), 恢复后若收到 term_id 大于自己维护的, 那么丢弃所有 uncommit 的记录, 向 leader 依次重新请求缺失的数据
+
+没法处理乱序, 只能依次 commit (缺失情况也需要一条一条补全)
+通过心跳消息, 保持当选状态, 会不会很占网络? (基本上会上 raft 的都是需要高并发支持的)
+消息接收/发送时间 << timeout << term 间隔
+
+** 可能不对的理解
++ 如何保证只有 leader 才能响应 client 消息, 并且不丢失 client 消息 (leader fail)
+  前端服务器接收 client 的 request, 发给 leader, 若无响应, 则广播?
+
+** 资料
+https://raft.github.io/
+点击圆圈, 进行操作, 只有 request 才会在右边表格出现
+
+进行如下操作:
+1. 先 requet, 然后在 leader 收到 majority 准备发送 commit 的时候, stop leader,
+2. 然后运行选出 leader, 新的 request 产生时, leader 会在把新的 request commit 时, 把没有 commit 的都 commit 了
+NOTE: 上述 2 选 leader 时, 如果最先到的是 term_id 小的或 log 少的, 那竞选时它, 它将得不到选票
+NOTE: 上述 2 如果当选的 leader 仍然时之前的那一个, 那么它会把之前未完成 (但已有 log (保存在本地, 一旦有就意味着有人可能已经 commit 了) 的, 无 log 则抛弃) 的进行下去
+
+http://thesecretlivesofdata.com/raft/
+
+* paxos
+** roles
+proposer, acceptor, learner 三者的随机组合, 通常兼任
+
+** 阶段 basic paxos
+|                          | proposer        | acceptor       | learner |
+|--------------------------+-----------------+----------------+---------|
+| client request           |                 |                |         |
+| prepare n (auto inc 1)   | prepare(n)      | promise(n, Vi) |         |
+| majority? issue V        | accept!(n, V)   | accepted(n, V) |         |
+| majority? any result > n | response(n, V)/ |                | learn   |
+
+只 promise n > minPrososal 的 prepare(n), 只 accept n >= minPrososal 的 accept!(n)
+对于不接受的提案, 可以不返回消息, 但为了优化系统, 一般实现都会回应 Nack(minProposal)
+stable storage (minProposal, acceptedProposal, acceptedValue)
+
+为什么选择 (chosen) 最大提案编号的 accept 值: 因为发出 accpet! 之后, 接收的节点可能故障, 从而没有达成共识, 只有少部分 accept 了, 那么这样新的提案(新的值)就可能达成共识 (其他例子: 活锁)
+
+** 阶段 multi paxos (Instance)
+针对每一个要确定的值, 进行一次 paxos (称为 Instance, auto inc +1)
+选一个 leader 来专门 issue proposals
+|                              | proposer         | acceptor          |
+|------------------------------+------------------+-------------------|
+| client request               |                  |                   |
+| select leader N (auto inc 1) | prepare(N)       | promise(N, I, Vi) |
+| majority? issue V            | accept!(N, I, V) | accepted(N, I, V) |
+| majority? any result > n     | response/reissue |                   |
+|------------------------------+------------------+-------------------|
+| in N skip (prepare)          |                  |                   |
+| majority? issue V            | accept!(N, I, V) | accepted(N, I, V) |
+| majority? any result > n     | response/reissue |                   |
+
+只响应 (N > Ni or (N = Ni and I > Ii)) 的?
+stable storage (leader(N), minPrososal(I), acceptedProposal, acceptedValue)?
+
+** 可能不对的理解
+Multi paxos, 应该要记录 leader 是谁, 当 leader 故障重启后如果选出新的 leader 那么就不 accept 老 leader 的提案并告诉它有新的 leader 是谁
+可以允许有多个自认为是 leader 的, 就是选举阶段必须要需要两个来回确保共识
+
+# learn 就是 chosen? 对于同一个 Instance 的前两条消息, 已 chosen 无视规则返回 chosen
+# 其实也是 三阶段, 并不比 raft 少, learn 就是 raft 的 commit?
+# 不过 learn 的阶段, 对于 acceptor 来说可以发起一个 paxos 来询问已达成共识的 chosen?
+
+# 没有确认阶段, 就需要 client 收到多于一半的相同消息来确定是否达成共识?
+
+# multi paxos 中的 N 也称为 paxos group, 我理解的是 paxos 的 leader 不像 raft 那样是一直担任的 (如果可以的话), paxos group 更像是为了一组命令能够高效化 (省去不必要的 prepare) 而提出来的, 而一般情况下 paxos group 不会太长 (这样 leader 一旦故障, 或网络分区等, 我们只需要同步一个 paxos group 的数据即可, 用下一个当选 leader 的那个 paxos group 的备份即可)
+# multi paxos 选举, (提出自己接受过的最大的 accepted(N, I, V), 其他节点只选举比自己大的), 当然也可以把整个 paxos group 废弃掉?
+# 对于 multi paxos 的某个 paxos group 来说只会有一个 leader 来 propose, 所以 accept 的值是什么都无所谓
+
+multi-paxos 同 raft, 对同一个 request, 只会有一个 leader issue proposal, 所以只要有 acceptor accept 了值那么这个值就是被 chosen 了, 当然如果有这个值的节点都坏了, 那么就是以下的新节点当选的情况, 可能会被改成 no-np
+
+新 leader 当选时, 会发起自己缺失 Instance 的 prepare 阶段, 来快速获取 accepted 的值, 没有则视为共识失败, 用 no-op 填充 (不改变状态机状态), 并用该值发起相应的 accept! 阶段
+
+execute 需要之前的都 chosen 才可以 (TODO: 何时 execute? 是否需要记住 execute 的位置, 还是说只需要 leader execute, 然后用 snapshot 辅助?)
+
+** 资料
+Paxos Made Simple
+有证明, 严谨
+
+https://zhuanlan.zhihu.com/p/23811020
+这篇文章讲了很多背景知识
+
+https://en.wikipedia.org/wiki/Paxos_(computer_science)
+有图很形象
+
+https://www.zhihu.com/question/57321934/answer/152659675
+工程实现细节
+
+* pbft (Fabric)
+** roles
+主节点, 其他节点
+
+** 阶段
++ 主节点接受 client 请求后广播给其他节点
++ 节点执行 pre-prepare, prepare, commit 三阶段, 返回消息给客户端
++ 客户端收到 f + 1 个节点的相同消息后表示共识完成
+
+*** <<PRE-PREPARE, v, n, d>, m>
+验证:
++ 签名 digest(摘要) 正确,
++ view 等于自己当前 view
++ 之前没有 accept (prepare 共识达成) 过相同的 v, n
++ n 处于高低水位之间 (防止作恶主节点作用范围太大)
+
+通过后, log 两阶段消息, 并进入下一阶段
+
+*** <PREPARE, v, n, d, i>
+接收其他节点 prepare 消息时, 验证:
++ 签名正确
++ view 等于自己当前 view
++ n 处于高低水位之间
+
+通过后 log (用来判断到达一定数量后进入下一阶段)
+条件: log 里有 m, pre-prepare, 2f+ prepare (n, v, d 相同)
+
+以上的两阶段主要是对 view 中的顺序 (n) 达成共识 (即使主节点的顺序是错的)
+
+TODO: 主节点不用发 prepare 消息? (论文图中没有)
+
+*** <COMMIT, v, n, d(m),i>
+验证同上, 通过后 log
+
+节点不用判断达成的共识是什么, 只要知道共识达成了就行, 所以是收到 2f 个消息进入下一阶段, 而不是像 client 那样
+
+execute: <=n 的都已经 commit 后可 execute
+
+*** garbage collection
+checkpoint
+stable checkpoint: 共识
+
+收到的经 验证的 <CHECKPOINT, n, d, i> sig(i) 消息 2f+ 就是 stable checkpoint 达成的证据
+CHECKPOINT 的产生和搜集开销比较大, 所以通常都是已经 execute 的 n 能被某个数整除的时候产生 100 (e.g. 100)
+checkpoint 也用于推进进度, stable checkpoint 就是最低水位, 加常数 (e.g. 200) 就是最高水位
+
+stable checkpoint 达成后, 可以丢掉之前的所有消息 (TODO: 如何保证因故障而达不到共识的节点恢复, 即如何保证 3f+1<N 不随时间推移而满足)
+
+TODO: 运行和恢复, 到底什么时候 execute, stable 之后, 还是只要 local checkpoint 就行, 另外状态能不能恢复
+
+*** 重选主
+新的主需要可确定 (自己知道, 别人也知道, 比如根据当前 view % 节点)
+<view-change, v+1, n, C, P, i> sig(i) # n 是 i 维护的 stable checkpoint
+
+C 是 checkpoint 证明
+P 是所有 >n (但好像 commit 过的也不用, primary 还会在其中找最小的推进 checkpoint?) 且已经 prepared 的消息的集合, 每个消息 Pm pre-prepare 证明
+
+<new-view, v+1, V, O> sig(p) # 默认新节点没有问题
+V 是 view-change 证明
+O 是整理过后的消息, [min-s, max-s], 中间缺的用 no-op 代替
+
+*** learn
+论文这部分很短, 但看不太懂
+
+** 重要细节
+v: view 相当于 raft 的 term
+n: 相当于 proposal 的 n
+
+*** client
+<REQUEST, o, t, c> sig(c)  # o means operation
+<REPLY, v, t, c, i, r> sig(i) # t is request's t, r means result
+
+客户端收到 >=f+1 条相同信息时成功
+client 达不成共识时, 会向所有节点广播请求 re-send (如果有, 节点会记录每个节点最后一个 replay, 如果没有那么有理由怀疑主节点除了问题)
+
+签名: 由于存在作恶节点, 会伪造消息, 所以所有的消息都需要有可验证的数字签名
+论文中只在 view-change 和 new-view 用了签名, 因为开销太大
+
+** 可能不对的理解
+主节点是否可以发送假消息: 需要客户端签名, 各节点可以独立验证
+主节点拒绝服务: 客户端会向所有节点发送请求
+
+** 资料
+https://zhuanlan.zhihu.com/p/35847127
+
+论文: Practical Byzantine Fault Tolerance
+
+* 公链共识
+** pow (工作量证明)
+算力集中在大约 10 个矿池
+
+** pos (股东)
+点点币: 根据持币调整挖矿难度 (如何记录和证明当时持有的币)
+未来币: 确定算法 (持币量为被选中权重) 指定下一个挖矿者 (如何保证一定有挖矿能力和时间)
+
+** dpos (人民代表大会)
+钱包可初始设定代表 (可多个, 可分级)
+通过交易实现选择代表的转移 (股权变化)? (可能理解不对)
+通过激励(交易费抽成)来保持代表们的诚实, 通过选择代表的变化可罢免代表
+
+tapos:(?)
+51%的股东在6个月内可以直接确认每个区块
+而交易活跃流通的股份所占的比例, 则平均10%的股东在几天内可以直接确认区块链
+
+网络碎片: 恢复后选择被更多 producers 验证过的那条分支
+
+在容错 (n - 1)/3 的前提下, 如果有 2/3 个代表跟在所在块之后, 那么就有理由相信其在最长链上
+
+https://developer.aliyun.com/article/60400
+
+https://steemit.com/dpos/@legendx/dpos
+
+** ripple (董事会)
+
+* 以太坊
+https://ethfans.org/shaoping/articles/talk-with-jan-about-ehtereum
